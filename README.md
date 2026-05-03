@@ -25,7 +25,127 @@ Sandcastle is provider-agnostic — it ships with built-in providers for Docker,
   - [Vercel](https://vercel.com/) — cloud-based Firecracker microVMs via `@vercel/sandbox`
   - Or [create your own](#custom-sandbox-providers) using `createBindMountSandboxProvider` or `createIsolatedSandboxProvider`
 
+## Installing this fork
+
+This fork (`larmax82/sandcastle`) adds a Cursor agent provider on top of upstream `mattpocock/sandcastle`. It is **not published to npm** — install it directly from GitHub.
+
+The package name stays `@ai-hero/sandcastle`, so all imports (`import { run, cursor } from "@ai-hero/sandcastle"`) work unchanged. Only the source URL points to the fork.
+
+### Option A — install in another project (consumer install)
+
+Use this when you want to _use_ the fork from a different repo. Pin to a tag, not a branch — branches move and force-pushes break lockfiles.
+
+```bash
+npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.2"
+```
+
+Or, equivalently, in the consumer project's `package.json`:
+
+```json
+{
+  "devDependencies": {
+    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.2"
+  }
+}
+```
+
+Then run `npm install`. npm clones the fork at the tag, runs `prepare` (which builds `dist/` via `tsgo`), and prunes devDependencies. After install you can use it normally:
+
+```bash
+npx sandcastle init --agent cursor
+```
+
+```typescript
+import { run, cursor } from "@ai-hero/sandcastle";
+import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
+
+await run({
+  agent: cursor("composer-2"),
+  sandbox: docker(),
+  promptFile: ".sandcastle/prompt.md",
+});
+```
+
+For private-fork access, swap the URL form to SSH so npm uses your local key:
+
+```bash
+npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.2"
+```
+
+#### Updating to a new tag
+
+```bash
+npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.<n>"
+```
+
+The lockfile rewrites the entry to the resolved git commit SHA, so reinstalls stay reproducible even if a tag later moves.
+
+#### Tag scheme
+
+`v<upstream-version>-cursor.<n>`. Currently published:
+
+| Tag               | Contents                                                          |
+| ----------------- | ----------------------------------------------------------------- |
+| `v0.5.7-cursor.0` | Fork distribution mechanism (build `dist/` on git-source install) |
+| `v0.5.7-cursor.1` | Cursor agent provider — text + result + session_id                |
+| `v0.5.7-cursor.2` | Cursor agent provider — surfaces shell tool calls (`Bash`)        |
+
+Pick the highest tag unless you have a specific reason not to.
+
+### Option B — clone the fork itself (development install)
+
+Use this when you want to _modify_ the fork (add a provider, fix a bug, run the test suite).
+
+```bash
+git clone https://github.com/larmax82/sandcastle.git
+cd sandcastle
+npm install
+```
+
+`npm install` triggers `prepare`, which runs `husky || true && npm run build`. The `husky || true` lets the hook succeed when there's no `.git` (it's a no-op inside a consumer's `node_modules`); the `npm run build` invokes `tsgo` and copies templates into `dist/`.
+
+Common scripts:
+
+```bash
+npm run typecheck   # tsgo --noEmit
+npm test            # vitest run
+npm run build       # tsgo + postbuild
+```
+
+To consume your local clone from another project without publishing or pushing a tag, use `npm link` or a `file:` URL:
+
+```bash
+# In the fork checkout
+npm link
+
+# In the consumer project
+npm link @ai-hero/sandcastle
+```
+
+Or a one-shot file-source install (good for snapshotting a specific working tree):
+
+```bash
+# In the fork checkout
+git stash && git rev-parse HEAD     # note the SHA you're at
+
+# In the consumer project
+npm install --save-dev "git+file:///absolute/path/to/sandcastle#<sha>"
+```
+
+The `git+file://` form goes through the same `prepare`-on-install build path as a real GitHub URL, so it's the closest local equivalent to what consumers will get from a published tag.
+
+### Troubleshooting
+
+- **`Cannot find module '@ai-hero/sandcastle'` after install.** The `prepare` build didn't run. Confirm `node_modules/@ai-hero/sandcastle/dist/index.js` exists. If it doesn't, devDependencies were skipped — re-run `npm install` and watch for build errors.
+- **`tsgo: not found` during install.** Same root cause. Some CI environments set `NPM_CONFIG_PRODUCTION=true` or `--omit=dev`, which skips the build deps `prepare` needs. Either unset that for the install, or pre-build and commit `dist/` (not recommended — see fork doc §8.6).
+- **`husky` errors during a consumer install.** Shouldn't happen — `husky || true` swallows it. If you see it anyway, you're on a fork tag that predates `v0.5.7-cursor.0`; bump to a newer tag.
+- **Lockfile keeps the old SHA after a tag move.** Run `npm install --save-dev "github:larmax82/sandcastle#<tag>"` again with the same URL. npm re-resolves the tag and rewrites the lockfile.
+
+For the full design rationale (why `prepare`-on-install, why no npm publish, the per-user `npm overrides` trick), see [`forkDocu/adding-cursor-agent.md`](./forkDocu/adding-cursor-agent.md) §8.
+
 ## Quick start
+
+> Using this fork? Run the install command from [Installing this fork](#installing-this-fork) instead of step 1 below; the rest of the steps are identical.
 
 1. Install the package:
 
