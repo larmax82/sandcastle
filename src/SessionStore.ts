@@ -10,7 +10,7 @@
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type { BindMountSandboxHandle } from "./SandboxProvider.js";
 
 // ---------------------------------------------------------------------------
@@ -94,13 +94,17 @@ export const sandboxSessionStore = (
   projectsDir: string,
 ): SessionStore => {
   const encoded = encodeProjectPath(cwd);
-  const projectDir = join(projectsDir, encoded);
+  // `projectDir` lives inside the (Linux) sandbox, so it must use POSIX
+  // separators regardless of the host OS. `path.join` would emit `\` on
+  // Windows, which corrupts the in-sandbox path.
+  const projectDir = posix.join(projectsDir, encoded);
 
   return {
     cwd,
-    sessionFilePath: (id: string): string => join(projectDir, `${id}.jsonl`),
+    sessionFilePath: (id: string): string =>
+      posix.join(projectDir, `${id}.jsonl`),
     readSession: async (id: string): Promise<string> => {
-      const sandboxPath = join(projectDir, `${id}.jsonl`);
+      const sandboxPath = posix.join(projectDir, `${id}.jsonl`);
       const tmpPath = join(
         tmpdir(),
         `sandcastle-session-${id}-${Date.now()}.jsonl`,
@@ -113,7 +117,7 @@ export const sandboxSessionStore = (
       }
     },
     writeSession: async (id: string, content: string): Promise<void> => {
-      const sandboxPath = join(projectDir, `${id}.jsonl`);
+      const sandboxPath = posix.join(projectDir, `${id}.jsonl`);
       const tmpPath = join(
         tmpdir(),
         `sandcastle-session-${id}-${Date.now()}.jsonl`,

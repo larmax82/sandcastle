@@ -105,13 +105,13 @@ export const syncIn = (
           hostRepoDir,
         );
 
-        // Create temp dir in sandbox and copy bundle in
-        const mkTempResult = yield* execOk(
-          handle,
-          "mktemp -d -t sandcastle-XXXXXX",
-        );
-        const sandboxTmpDir = mkTempResult.stdout.trim();
-        const bundleSandboxPath = `${sandboxTmpDir}/repo.bundle`;
+        // Stage the bundle inside the sandbox at a path adjacent to the
+        // worktree. Using a fixed sibling path (rather than `mktemp -d` inside
+        // the sandbox) keeps this routine portable to test sandboxes that run
+        // on Windows hosts where `mktemp` is not available. `copyIn` creates
+        // the parent directory if needed.
+        const worktreePath = handle.worktreePath;
+        const bundleSandboxPath = `${worktreePath}.bundle`;
 
         yield* Effect.tryPromise({
           try: () => handle.copyIn(bundleHostPath, bundleSandboxPath),
@@ -121,29 +121,19 @@ export const syncIn = (
             }),
         });
 
-        // Clone from bundle into the worktree
-        const worktreePath = handle.worktreePath;
+        // Populate the worktree with the host's committed state using git
+        // alone — `git init` works in a non-empty dir, `git fetch` brings in
+        // every ref from the bundle, and `git checkout -f` materialises the
+        // requested branch. This avoids the previous `git clone` +
+        // `rm -rf` + `mv` dance which relied on POSIX-only utilities.
+        yield* execOk(handle, `git init -q`, { cwd: worktreePath });
         yield* execOk(
           handle,
-          `git clone "${bundleSandboxPath}" "${worktreePath}_clone"`,
+          `git fetch -q "${bundleSandboxPath}" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"`,
+          { cwd: worktreePath },
         );
-
-        // Move contents from clone into worktree (git clone requires empty target)
-        yield* execOk(
-          handle,
-          `rm -rf "${worktreePath}" && mv "${worktreePath}_clone" "${worktreePath}"`,
-        );
-
-        // Checkout the correct branch
-        yield* execOk(handle, `git checkout "${branch}"`, {
+        yield* execOk(handle, `git checkout -f "${branch}"`, {
           cwd: worktreePath,
-        });
-
-        // Clean up sandbox temp files
-        yield* Effect.tryPromise({
-          try: () => handle.exec(`rm -rf "${sandboxTmpDir}"`),
-          catch: () =>
-            new SyncError({ message: "Failed to clean up sandbox temp dir" }),
         });
 
         // Verify sync succeeded
