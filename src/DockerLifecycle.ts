@@ -95,7 +95,7 @@ export const startContainer = (
     ]);
 
     const volumeFlags = (options?.volumeMounts ?? []).flatMap((mount) => [
-      "-v",
+      "--mount",
       mount,
     ]);
 
