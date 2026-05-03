@@ -641,18 +641,27 @@ doesn't exist and `import { run } from "@ai-hero/sandcastle"` blows up.
 
 ### 8.2 The fix: build on install via `prepare`
 
-Edit your fork's `package.json`:
+The fork's `package.json` runs the build through a Node script during the
+`prepare` lifecycle:
 
 ```json
 "scripts": {
   ...
-  "prepare": "husky || true && npm run build"
+  "postbuild": "node scripts/postbuild.mjs",
+  "prepare": "node scripts/prepare.mjs"
 }
 ```
 
 Notes:
-- `husky || true` lets the script succeed inside `node_modules` (where there
-  is no `.git` directory and `husky` would otherwise error).
+- `scripts/prepare.mjs` runs `husky` only when `.git` is present (i.e., a dev
+  checkout) and swallows any failure. It then runs `npm run build` and asserts
+  that `dist/main.js` exists, exiting non-zero if not. That guard prevents
+  a silent empty-package install if the build chain ever produces nothing —
+  the original symptom of #12.
+- `scripts/postbuild.mjs` uses `fs.rmSync` / `fs.cpSync` to refresh
+  `dist/templates`. The previous `rm -rf` / `cp -r` chain only worked on
+  POSIX shells and silently broke Windows installs (#12, fixed in
+  `v0.5.7-cursor.4`).
 - npm runs `prepare` automatically after a git-source install. After the
   consumer's `npm install` completes, `node_modules/@ai-hero/sandcastle/dist/`
   will exist with the compiled output.
@@ -661,8 +670,10 @@ Notes:
   for git sources, then prunes them after `prepare` finishes. This works
   out of the box; no changes needed.
 
-This is the cleanest single change. **Make it on a fork branch** (e.g. `main`
-on your fork) so you don't have to commit `dist/` artifacts.
+This keeps the fork shell-agnostic — `cmd.exe`, PowerShell, and POSIX shells
+all run the same `node scripts/*.mjs` entrypoints. **Make it on a fork
+branch** (e.g. `main` on your fork) so you don't have to commit `dist/`
+artifacts.
 
 ### 8.3 Tagging releases
 
