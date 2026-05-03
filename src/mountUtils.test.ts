@@ -549,6 +549,46 @@ describe("patchGitMountsForWindows", () => {
         `gitdir: ${PARENT_GIT_SANDBOX_DIR}/worktrees/backslash-wt\n`,
       );
     });
+
+    it("remaps parent .git via filesystem-identity when path strings differ (subst/junction)", async () => {
+      // Repro: user has `subst E: C:\E`, so E:\Tandem_dev and C:\E\Tandem_dev
+      // are the same physical directory. Node uses the user-facing E: path
+      // when constructing gitMounts; git canonicalizes through the subst
+      // and writes the C: path into the worktree's .git pointer file. The
+      // strings don't match — we have to fall back to dev+ino comparison.
+      const aliasGitDir = "E:/Tandem_dev/.git";
+      const canonicalGitDir = "C:/E/Tandem_dev/.git";
+      const mounts = [{ hostPath: aliasGitDir, sandboxPath: aliasGitDir }];
+
+      // Simulate samePath: aliasGitDir and canonicalGitDir refer to the same
+      // physical directory; nothing else does.
+      const samePath = async (a: string, b: string): Promise<boolean> => {
+        const pair = new Set([a, b]);
+        return pair.has(aliasGitDir) && pair.has(canonicalGitDir);
+      };
+
+      const result = await patchGitMountsForWindows(
+        mounts,
+        "E:/Tandem_dev/.sandcastle/worktrees/sandcastle-implementer-20260503",
+        SANDBOX_REPO_DIR,
+        makeReadFile(
+          `gitdir: ${canonicalGitDir}/worktrees/sandcastle-implementer-20260503\n`,
+        ),
+        makeStatFile("file"),
+        "win32",
+        samePath,
+      );
+
+      expect(result).toHaveLength(2);
+      // Parent .git mount keeps its alias hostPath (so podman gets the path
+      // the user provided) but its destination is remapped to a POSIX path.
+      expect(result[0]).toEqual({
+        hostPath: aliasGitDir,
+        sandboxPath: PARENT_GIT_SANDBOX_DIR,
+      });
+      // Overlay mount for the corrected .git file
+      expect(result[1]!.sandboxPath).toBe(`${SANDBOX_REPO_DIR}/.git`);
+    });
   });
 });
 
