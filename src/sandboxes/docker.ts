@@ -25,7 +25,11 @@ import {
   type InteractiveExecOptions,
 } from "../SandboxProvider.js";
 import type { MountConfig } from "../MountConfig.js";
-import { defaultImageName, resolveUserMounts } from "../mountUtils.js";
+import {
+  assertNoCommaInMountPath,
+  defaultImageName,
+  resolveUserMounts,
+} from "../mountUtils.js";
 
 export interface DockerOptions {
   /** Docker image name (default: derived from repo directory name). */
@@ -83,6 +87,8 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
       // drive-letter paths break the volume parser.
       const allMounts = [...createOptions.mounts, ...userMounts];
       const volumeMounts = allMounts.map((m) => {
+        assertNoCommaInMountPath("source", m.hostPath);
+        assertNoCommaInMountPath("destination", m.sandboxPath);
         const parts = [
           "type=bind",
           `source=${m.hostPath}`,

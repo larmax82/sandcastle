@@ -23,7 +23,11 @@ import {
   type InteractiveExecOptions,
 } from "../SandboxProvider.js";
 import type { MountConfig } from "../MountConfig.js";
-import { defaultImageName, resolveUserMounts } from "../mountUtils.js";
+import {
+  assertNoCommaInMountPath,
+  defaultImageName,
+  resolveUserMounts,
+} from "../mountUtils.js";
 
 export interface PodmanOptions {
   /** Podman image name (default: derived from repo directory name). */
@@ -402,6 +406,8 @@ const formatVolumeMount = (
   mount: { hostPath: string; sandboxPath: string; readonly?: boolean },
   selinuxLabel: PodmanOptions["selinuxLabel"],
 ): string => {
+  assertNoCommaInMountPath("source", mount.hostPath);
+  assertNoCommaInMountPath("destination", mount.sandboxPath);
   const parts = [
     "type=bind",
     `source=${mount.hostPath}`,

@@ -19,6 +19,24 @@ import { SANDBOX_REPO_DIR } from "./SandboxFactory.js";
 export const PARENT_GIT_SANDBOX_DIR = "/.sandcastle-parent-git";
 
 /**
+ * Throw if a mount path contains a comma. The bind-mount providers emit
+ * `--mount type=bind,source=...,destination=...` strings whose fields are
+ * comma-separated, so an embedded comma silently shifts the value into the
+ * wrong field.
+ */
+export const assertNoCommaInMountPath = (
+  field: "source" | "destination",
+  path: string,
+): void => {
+  if (path.includes(",")) {
+    throw new Error(
+      `Mount ${field} path contains a comma (','), which conflicts with the ` +
+        `--mount field separator. Rename the directory to remove the comma: ${path}`,
+    );
+  }
+};
+
+/**
  * Derive the default image name from the repo directory.
  * Returns `sandcastle:<dir-name>` where dir-name is the last path segment,
  * lowercased and sanitized for image tag rules.

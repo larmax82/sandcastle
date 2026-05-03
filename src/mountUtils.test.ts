@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertNoCommaInMountPath,
   defaultImageName,
   expandTilde,
   resolveHostPath,
@@ -548,5 +549,28 @@ describe("patchGitMountsForWindows", () => {
         `gitdir: ${PARENT_GIT_SANDBOX_DIR}/worktrees/backslash-wt\n`,
       );
     });
+  });
+});
+
+describe("assertNoCommaInMountPath", () => {
+  it("returns silently for paths without commas", () => {
+    expect(() =>
+      assertNoCommaInMountPath("source", "/home/user/project"),
+    ).not.toThrow();
+    expect(() =>
+      assertNoCommaInMountPath("destination", "E:/Tandem_dev/.git"),
+    ).not.toThrow();
+  });
+
+  it("throws with the source field name and the offending path", () => {
+    expect(() =>
+      assertNoCommaInMountPath("source", "/home/user/Sales, 2024"),
+    ).toThrow(/source path contains a comma.*Sales, 2024/);
+  });
+
+  it("throws with the destination field name and the offending path", () => {
+    expect(() =>
+      assertNoCommaInMountPath("destination", "/mnt/foo,bar"),
+    ).toThrow(/destination path contains a comma.*foo,bar/);
   });
 });
