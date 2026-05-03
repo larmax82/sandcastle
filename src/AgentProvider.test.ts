@@ -1,6 +1,16 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { claudeCode, codex, opencode, pi } from "./AgentProvider.js";
+import { claudeCode, codex, cursor, opencode, pi } from "./AgentProvider.js";
 import type { AgentCommandOptions } from "./AgentProvider.js";
+
+const FIXTURES_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "__fixtures__",
+);
+const loadFixture = (relPath: string): string =>
+  readFileSync(join(FIXTURES_DIR, relPath), "utf-8");
 
 /** Shorthand: build options with dangerouslySkipPermissions: true (mirrors existing sandbox callers). */
 const opts = (prompt: string): AgentCommandOptions => ({
@@ -938,5 +948,267 @@ describe("captureSessions flag", () => {
 
   it("opencode has captureSessions false", () => {
     expect(opencode("opencode-model").captureSessions).toBe(false);
+  });
+
+  it("cursor has captureSessions false", () => {
+    expect(cursor("composer-2").captureSessions).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cursor factory
+// ---------------------------------------------------------------------------
+
+describe("cursor factory", () => {
+  it("returns a provider with name 'cursor'", () => {
+    const provider = cursor("composer-2");
+    expect(provider.name).toBe("cursor");
+  });
+
+  it("does not expose envManifest or dockerfileTemplate", () => {
+    const provider = cursor("composer-2");
+    expect(provider).not.toHaveProperty("envManifest");
+    expect(provider).not.toHaveProperty("dockerfileTemplate");
+  });
+
+  it("buildPrintCommand includes the model and stream-json flag", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand(opts("do something"));
+    expect(command).toContain("composer-2");
+    expect(command).toContain("--output-format stream-json");
+  });
+
+  it("buildPrintCommand delivers prompt via stdin, not argv", () => {
+    const provider = cursor("composer-2");
+    const { command, stdin } = provider.buildPrintCommand(opts("it's a test"));
+    expect(command).not.toContain("it's a test");
+    expect(stdin).toBe("it's a test");
+  });
+
+  it("buildPrintCommand shell-escapes the model", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand(opts("do something"));
+    expect(command).toContain("--model 'composer-2'");
+  });
+
+  it("buildPrintCommand appends the validated flag bundle when dangerouslySkipPermissions=true", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand({
+      prompt: "x",
+      dangerouslySkipPermissions: true,
+    });
+    expect(command).toContain("--trust");
+    expect(command).toContain("--force");
+    expect(command).toContain("--sandbox disabled");
+    expect(command).toContain("--approve-mcps");
+  });
+
+  it("buildPrintCommand omits the flag bundle when dangerouslySkipPermissions=false", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand({
+      prompt: "x",
+      dangerouslySkipPermissions: false,
+    });
+    expect(command).not.toContain("--trust");
+    expect(command).not.toContain("--force");
+    expect(command).not.toContain("--sandbox disabled");
+    expect(command).not.toContain("--approve-mcps");
+  });
+
+  it("buildPrintCommand appends --resume <id> when resumeSession is set", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand({
+      prompt: "x",
+      dangerouslySkipPermissions: true,
+      resumeSession: "chat_abc123",
+    });
+    expect(command).toContain("--resume 'chat_abc123'");
+  });
+
+  it("buildPrintCommand omits --resume when resumeSession is unset", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand(opts("x"));
+    expect(command).not.toContain("--resume");
+  });
+
+  it("buildPrintCommand shell-escapes the resume session id", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand({
+      prompt: "x",
+      dangerouslySkipPermissions: true,
+      resumeSession: "chat'inject",
+    });
+    // single-quote inside the id should be escaped, not embedded raw
+    expect(command).toContain("--resume 'chat'\\''inject'");
+  });
+
+  it("buildPrintCommand appends --mode plan when mode option is set", () => {
+    const provider = cursor("composer-2", { mode: "plan" });
+    const { command } = provider.buildPrintCommand(opts("x"));
+    expect(command).toContain("--mode plan");
+  });
+
+  it("buildPrintCommand appends --mode ask when mode option is set", () => {
+    const provider = cursor("composer-2", { mode: "ask" });
+    const { command } = provider.buildPrintCommand(opts("x"));
+    expect(command).toContain("--mode ask");
+  });
+
+  it("buildPrintCommand omits --mode when option is unset", () => {
+    const provider = cursor("composer-2");
+    const { command } = provider.buildPrintCommand(opts("x"));
+    // Use space-prefixed checks so we don't match --model
+    expect(command).not.toContain(" --mode plan");
+    expect(command).not.toContain(" --mode ask");
+  });
+
+  it("parseStreamLine extracts session_id from system.init", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "system",
+      subtype: "init",
+      session_id: "chat_xyz",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "session_id", sessionId: "chat_xyz" },
+    ]);
+  });
+
+  it("parseStreamLine extracts text from assistant content blocks", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "Hello" }] },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "text", text: "Hello" },
+    ]);
+  });
+
+  it("parseStreamLine concatenates multiple text blocks in one assistant message", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "Hello " },
+          { type: "text", text: "world" },
+        ],
+      },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "text", text: "Hello world" },
+    ]);
+  });
+
+  it("parseStreamLine ignores tool_use blocks (deferred to follow-up slice)", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }],
+      },
+    });
+    // No tool_call event — text-only slice
+    expect(provider.parseStreamLine(line)).toEqual([]);
+  });
+
+  it("parseStreamLine extracts result from result event", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({ type: "result", result: "Done" });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "result", result: "Done" },
+    ]);
+  });
+
+  it("parseStreamLine returns empty array for non-JSON lines", () => {
+    const provider = cursor("composer-2");
+    expect(provider.parseStreamLine("not json")).toEqual([]);
+    expect(provider.parseStreamLine("")).toEqual([]);
+  });
+
+  it("parseStreamLine returns empty array for malformed JSON", () => {
+    const provider = cursor("composer-2");
+    expect(provider.parseStreamLine("{bad json")).toEqual([]);
+  });
+
+  it("parseStreamLine returns empty array for unrecognized event types", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({ type: "unknown_event", data: "foo" });
+    expect(provider.parseStreamLine(line)).toEqual([]);
+  });
+
+  it("parseStreamLine surfaces error events as result", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "error",
+      error: { message: "Rate limit exceeded" },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "result", result: "Rate limit exceeded" },
+    ]);
+  });
+
+  it("parseStreamLine surfaces agent_error events as result", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "agent_error",
+      message: "Authentication failed",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "result", result: "Authentication failed" },
+    ]);
+  });
+
+  it("parseStreamLine returns empty array for error event with no extractable message", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({ type: "error", code: "unknown" });
+    expect(provider.parseStreamLine(line)).toEqual([]);
+  });
+
+  it("bakes model into each provider instance independently", () => {
+    const provider1 = cursor("model-a");
+    const provider2 = cursor("model-b");
+    expect(provider1.buildPrintCommand(opts("test")).command).toContain(
+      "model-a",
+    );
+    expect(provider2.buildPrintCommand(opts("test")).command).toContain(
+      "model-b",
+    );
+    expect(provider1.buildPrintCommand(opts("test")).command).not.toContain(
+      "model-b",
+    );
+  });
+
+  it("accepts an env option and exposes it on the provider", () => {
+    const provider = cursor("composer-2", {
+      env: { CURSOR_API_KEY: "xyz" },
+    });
+    expect(provider.env).toEqual({ CURSOR_API_KEY: "xyz" });
+  });
+
+  it("defaults env to empty object when not provided", () => {
+    const provider = cursor("composer-2");
+    expect(provider.env).toEqual({});
+  });
+
+  // --- fixture-driven parser test (acceptance criterion) ---
+
+  it("parses 01-text-only.jsonl into exactly one session_id, one text, one result, no tool_call", () => {
+    const provider = cursor("composer-2");
+    const lines = loadFixture("cursor/01-text-only.jsonl")
+      .split("\n")
+      .filter((l) => l.length > 0);
+    const events = lines.flatMap((l) => provider.parseStreamLine(l));
+
+    const counts = events.reduce<Record<string, number>>((acc, e) => {
+      acc[e.type] = (acc[e.type] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    expect(counts["session_id"]).toBe(1);
+    expect(counts["text"]).toBe(1);
+    expect(counts["result"]).toBe(1);
+    expect(counts["tool_call"]).toBeUndefined();
   });
 });
