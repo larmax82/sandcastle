@@ -21,7 +21,11 @@ const TOOL_ARG_FIELDS: Record<string, string> = {
 const extractErrorMessage = (obj: any): string | undefined => {
   const err = obj.error;
   if (typeof err === "string") return err;
-  if (typeof err === "object" && err !== null && typeof err.message === "string") {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    typeof err.message === "string"
+  ) {
     return err.message;
   }
   if (typeof obj.message === "string") return obj.message;
@@ -330,6 +334,105 @@ export const opencode = (
 
   parseStreamLine(_line: string): ParsedStreamEvent[] {
     return [];
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Cursor agent provider
+// ---------------------------------------------------------------------------
+
+const parseCursorStreamLine = (line: string): ParsedStreamEvent[] => {
+  if (!line.startsWith("{")) return [];
+  try {
+    const obj = JSON.parse(line);
+
+    // assistant message → text only (tool_call branch deferred to follow-up slice)
+    if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
+      const texts: string[] = [];
+      for (const block of obj.message.content as {
+        type: string;
+        text?: string;
+      }[]) {
+        if (block.type === "text" && typeof block.text === "string") {
+          texts.push(block.text);
+        }
+      }
+      if (texts.length > 0) {
+        return [{ type: "text", text: texts.join("") }];
+      }
+      return [];
+    }
+
+    // session id from system.init
+    if (
+      obj.type === "system" &&
+      obj.subtype === "init" &&
+      typeof obj.session_id === "string"
+    ) {
+      return [{ type: "session_id", sessionId: obj.session_id }];
+    }
+
+    // result event
+    if (obj.type === "result" && typeof obj.result === "string") {
+      return [{ type: "result", result: obj.result }];
+    }
+
+    // Cursor emits error / agent_error events on stdout for auth failures,
+    // rate limits, and API errors. Surface as result so the Orchestrator's
+    // stderr-empty fallback can show them to the user.
+    if (obj.type === "error" || obj.type === "agent_error") {
+      const msg = extractErrorMessage(obj);
+      return msg ? [{ type: "result", result: msg }] : [];
+    }
+  } catch {
+    // Not valid JSON — skip
+  }
+  return [];
+};
+
+/** Options for the cursor agent provider. */
+export interface CursorOptions {
+  /** Environment variables injected by this agent provider. */
+  readonly env?: Record<string, string>;
+  /** Optional reasoning mode flag (--mode plan|ask). */
+  readonly mode?: "plan" | "ask";
+}
+
+export const cursor = (
+  model: string,
+  options?: CursorOptions,
+): AgentProvider => ({
+  name: "cursor",
+  env: options?.env ?? {},
+  captureSessions: false,
+
+  buildPrintCommand({
+    prompt,
+    dangerouslySkipPermissions,
+    resumeSession,
+  }: AgentCommandOptions): PrintCommand {
+    const skipPerms = dangerouslySkipPermissions
+      ? " --trust --force --sandbox disabled --approve-mcps"
+      : "";
+    const modeFlag = options?.mode ? ` --mode ${options.mode}` : "";
+    const resumeFlag = resumeSession
+      ? ` --resume ${shellEscape(resumeSession)}`
+      : "";
+    return {
+      command: `agent --print --output-format stream-json --model ${shellEscape(model)}${modeFlag}${skipPerms}${resumeFlag}`,
+      stdin: prompt,
+    };
+  },
+
+  buildInteractiveArgs({ prompt }: AgentCommandOptions): string[] {
+    const args = ["agent", "--model", model];
+    if (options?.mode) args.push("--mode", options.mode);
+    if (prompt) args.push(prompt);
+    return args;
+  },
+
+  parseStreamLine(line: string): ParsedStreamEvent[] {
+    return parseCursorStreamLine(line);
   },
 });
 

@@ -1,0 +1,2 @@
+error: authentication failed: missing or invalid CURSOR_API_KEY
+hint: get one from https://cursor.com/dashboard/integrations and export it as CURSOR_API_KEY
