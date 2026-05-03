@@ -36,7 +36,7 @@ The package name stays `@ai-hero/sandcastle`, so all imports (`import { run, cur
 Use this when you want to _use_ the fork from a different repo. Pin to a tag, not a branch — branches move and force-pushes break lockfiles.
 
 ```bash
-npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.3"
+npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.4"
 ```
 
 Or, equivalently, in the consumer project's `package.json`:
@@ -44,7 +44,7 @@ Or, equivalently, in the consumer project's `package.json`:
 ```json
 {
   "devDependencies": {
-    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.3"
+    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.4"
   }
 }
 ```
@@ -75,7 +75,7 @@ await run({
 For private-fork access, swap the URL form to SSH so npm uses your local key:
 
 ```bash
-npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.3"
+npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.4"
 ```
 
 #### Updating to a new tag
@@ -96,6 +96,7 @@ The lockfile rewrites the entry to the resolved git commit SHA, so reinstalls st
 | `v0.5.7-cursor.1` | Cursor agent provider — text + result + session_id                |
 | `v0.5.7-cursor.2` | Cursor agent provider — surfaces shell tool calls (`Bash`)        |
 | `v0.5.7-cursor.3` | `sandcastle init` interactive model picker (curated for Cursor)   |
+| `v0.5.7-cursor.4` | Cross-platform `prepare`/`postbuild` — fixes empty install on Windows (#13) |
 
 Pick the highest tag unless you have a specific reason not to.
 
@@ -109,7 +110,7 @@ cd sandcastle
 npm install
 ```
 
-`npm install` triggers `prepare`, which runs `husky || true && npm run build`. The `husky || true` lets the hook succeed when there's no `.git` (it's a no-op inside a consumer's `node_modules`); the `npm run build` invokes `tsgo` and copies templates into `dist/`.
+`npm install` triggers `prepare`, which runs `node scripts/prepare.mjs`. The script invokes `husky` only when a `.git` directory is present (so it's a no-op inside a consumer's `node_modules`), runs `npm run build` (`tsgo` + a Node-based `postbuild` that copies templates into `dist/`), and finally asserts that `dist/main.js` was produced — exiting non-zero if not, so a broken build during a git-source install fails loudly instead of shipping an empty package. Works on `cmd.exe`, PowerShell, and POSIX shells.
 
 Common scripts:
 
@@ -143,9 +144,10 @@ The `git+file://` form goes through the same `prepare`-on-install build path as 
 
 ### Troubleshooting
 
-- **`Cannot find module '@ai-hero/sandcastle'` after install.** The `prepare` build didn't run. Confirm `node_modules/@ai-hero/sandcastle/dist/index.js` exists. If it doesn't, devDependencies were skipped — re-run `npm install` and watch for build errors.
+- **`Cannot find module '@ai-hero/sandcastle'` after install.** The `prepare` build didn't run. Confirm `node_modules/@ai-hero/sandcastle/dist/index.js` exists. If it doesn't, devDependencies were skipped — re-run `npm install` and watch for build errors. From `v0.5.7-cursor.4` onward `prepare` exits non-zero when `dist/main.js` is missing, so this should surface as a real install failure rather than a silent empty package.
 - **`tsgo: not found` during install.** Same root cause. Some CI environments set `NPM_CONFIG_PRODUCTION=true` or `--omit=dev`, which skips the build deps `prepare` needs. Either unset that for the install, or pre-build and commit `dist/` (not recommended — see fork doc §8.6).
-- **`husky` errors during a consumer install.** Shouldn't happen — `husky || true` swallows it. If you see it anyway, you're on a fork tag that predates `v0.5.7-cursor.0`; bump to a newer tag.
+- **Empty `node_modules/@ai-hero/sandcastle/` (no `dist/`) on Windows.** Symptom of #12 — fixed in `v0.5.7-cursor.4`. If you see it on an earlier tag, bump to `v0.5.7-cursor.4` or newer; the build chain there uses cross-platform Node scripts instead of POSIX `rm -rf` / `cp -r`.
+- **`husky` errors during a consumer install.** Shouldn't happen — the `prepare` script only runs husky when a `.git` directory is present. If you see it anyway, you're on a fork tag that predates `v0.5.7-cursor.0`; bump to a newer tag.
 - **Lockfile keeps the old SHA after a tag move.** Run `npm install --save-dev "github:larmax82/sandcastle#<tag>"` again with the same URL. npm re-resolves the tag and rewrites the lockfile.
 
 For the full design rationale (why `prepare`-on-install, why no npm publish, the per-user `npm overrides` trick), see [`forkDocu/adding-cursor-agent.md`](./forkDocu/adding-cursor-agent.md) §8.
