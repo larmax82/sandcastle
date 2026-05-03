@@ -16,9 +16,12 @@ describe("getCopyOnWriteFlags", () => {
     expect(getCopyOnWriteFlags("linux")).toEqual(["-R", "--reflink=auto"]);
   });
 
-  it("returns -R --reflink=auto on other platforms", () => {
-    expect(getCopyOnWriteFlags("win32")).toEqual(["-R", "--reflink=auto"]);
+  it("returns -R --reflink=auto on other POSIX platforms", () => {
     expect(getCopyOnWriteFlags("freebsd")).toEqual(["-R", "--reflink=auto"]);
+  });
+
+  it("returns null on win32 (cp is not on PATH)", () => {
+    expect(getCopyOnWriteFlags("win32")).toBeNull();
   });
 });
 
@@ -103,12 +106,7 @@ describe("copyToWorktree", () => {
     try {
       const customTimeout = 500;
       const exitPromise = Effect.runPromiseExit(
-        copyToWorktree(
-          ["big-file.txt"],
-          hostDir,
-          worktreeDir,
-          customTimeout,
-        ),
+        copyToWorktree(["big-file.txt"], hostDir, worktreeDir, customTimeout),
       );
 
       // Advance past the custom timeout
