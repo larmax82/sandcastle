@@ -219,6 +219,10 @@ export const parseGitdirPath = (
  * @param readFile - Read a file's content (injectable for tests).
  * @param statFile - Stat a file to check if it's a directory (injectable for tests).
  * @param platform - Override for `process.platform` (injectable for tests).
+ * @param samePath - Compare two paths for filesystem identity (injectable for tests).
+ *   Used as a fallback when string comparison fails — handles Windows path
+ *   aliases like `subst` drives and directory junctions where two distinct
+ *   path strings refer to the same physical directory.
  */
 export const patchGitMountsForWindows = async (
   gitMounts: Array<{ hostPath: string; sandboxPath: string }>,
@@ -227,6 +231,7 @@ export const patchGitMountsForWindows = async (
   readFile?: (path: string) => Promise<string>,
   statFile?: (path: string) => Promise<"file" | "directory">,
   platform: string = process.platform,
+  samePath?: (a: string, b: string) => Promise<boolean>,
 ): Promise<Array<{ hostPath: string; sandboxPath: string }>> => {
   if (platform !== "win32") return gitMounts;
 
@@ -242,6 +247,17 @@ export const patchGitMountsForWindows = async (
       const { stat } = await import("node:fs/promises");
       const s = await stat(p);
       return s.isDirectory() ? ("directory" as const) : ("file" as const);
+    });
+  const _samePath =
+    samePath ??
+    (async (a: string, b: string) => {
+      const { stat } = await import("node:fs/promises");
+      try {
+        const [sa, sb] = await Promise.all([stat(a), stat(b)]);
+        return sa.dev === sb.dev && sa.ino === sb.ino;
+      } catch {
+        return false;
+      }
     });
 
   // Check the worktree's .git entry
@@ -282,7 +298,19 @@ export const patchGitMountsForWindows = async (
 
   for (const m of gitMounts) {
     const normalizedHostPath = m.hostPath.replace(/\\/g, "/");
-    if (normalizedHostPath === normalizedParentGitDir) {
+
+    // Determine if this mount is the parent .git directory.
+    // String match is the fast path. On Windows, paths can be aliased via
+    // `subst` drives or directory junctions — git canonicalizes through
+    // these when writing gitdir, but Node's `path.join` does not. Fall
+    // back to filesystem-identity comparison (dev+ino) so the mounts are
+    // still recognized in those setups.
+    let isParentGitDir = normalizedHostPath === normalizedParentGitDir;
+    if (!isParentGitDir) {
+      isParentGitDir = await _samePath(m.hostPath, parentGitDir);
+    }
+
+    if (isParentGitDir) {
       // Remap parent .git dir to deterministic sandbox path
       correctedMounts.push({ ...m, sandboxPath: PARENT_GIT_SANDBOX_DIR });
     } else if (normalizedHostPath === gitFileHostPath) {
