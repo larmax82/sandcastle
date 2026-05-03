@@ -89,6 +89,7 @@ The lockfile rewrites the entry to the resolved git commit SHA, so reinstalls st
 | `v0.5.7-cursor.0` | Fork distribution mechanism (build `dist/` on git-source install) |
 | `v0.5.7-cursor.1` | Cursor agent provider — text + result + session_id                |
 | `v0.5.7-cursor.2` | Cursor agent provider — surfaces shell tool calls (`Bash`)        |
+| `v0.5.7-cursor.3` | `sandcastle init` interactive model picker (curated for Cursor)   |
 
 Pick the highest tag unless you have a specific reason not to.
 
