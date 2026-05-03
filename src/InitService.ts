@@ -54,6 +54,12 @@ export interface AgentEntry {
   readonly dockerfileTemplate: string;
   /** Lines to include in the generated `.env.example` for this agent's API key. */
   readonly envExample: string;
+  /**
+   * Curated list of model IDs to offer in the `sandcastle init` picker.
+   * If undefined, the picker falls back to a free-text prompt pre-filled with `defaultModel`.
+   * Must include `defaultModel` if set.
+   */
+  readonly models?: readonly string[];
 }
 
 const CLAUDE_CODE_DOCKERFILE = `FROM node:22-bookworm
@@ -252,6 +258,37 @@ OPENCODE_API_KEY=`,
     envExample: `# Cursor API key
 # Get one from https://cursor.com/dashboard/integrations
 CURSOR_API_KEY=`,
+    // From forkDocu/adding-cursor-agent.md §2.3. Catalog drifts — keep the
+    // free-text "Custom…" escape hatch in the init picker so users can type
+    // any model Cursor accepts even if it's not listed here.
+    models: [
+      "composer-2",
+      "composer-1.5",
+      "composer-1",
+      "claude-4.7-opus",
+      "claude-4.6-opus",
+      "claude-4.5-opus",
+      "claude-4.5-sonnet",
+      "claude-4.5-haiku",
+      "claude-4-sonnet-1m",
+      "claude-4-sonnet",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.3",
+      "gpt-5.2",
+      "gpt-5.1",
+      "gpt-5",
+      "gpt-5.3-codex",
+      "gpt-5.2-codex",
+      "gpt-5.1-codex",
+      "gpt-5-codex",
+      "gemini-3.1-pro",
+      "gemini-3-pro",
+      "gemini-3-flash",
+      "gemini-2.5-flash",
+      "grok-4.20",
+      "kimi-k2.5",
+    ],
   },
 ];
 

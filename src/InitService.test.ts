@@ -123,6 +123,21 @@ describe("Agent registry", () => {
     expect(agent!.dockerfileTemplate).toContain("FROM");
     expect(agent!.dockerfileTemplate).toContain("cursor.com/install");
   });
+
+  it("cursor exposes a curated models list including its defaultModel", () => {
+    const agent = getAgent("cursor")!;
+    expect(agent.models).toBeDefined();
+    expect(agent.models!.length).toBeGreaterThan(0);
+    expect(agent.models).toContain(agent.defaultModel);
+  });
+
+  it.each(["claude-code", "pi", "codex", "opencode"] as const)(
+    "agent %s leaves models undefined (free-text picker fallback)",
+    (name) => {
+      const agent = getAgent(name)!;
+      expect(agent.models).toBeUndefined();
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

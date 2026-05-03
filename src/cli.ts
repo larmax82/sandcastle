@@ -156,11 +156,62 @@ const initCommand = Command.make(
         selectedAgent = getAgent(selected as string)!;
       }
 
-      // Resolve model: CLI flag > agent default
-      const selectedModel =
-        modelFlag._tag === "Some"
-          ? modelFlag.value
-          : selectedAgent.defaultModel;
+      // Resolve model: CLI flag > curated picker (with Custom… escape) > free-text prompt
+      let selectedModel: string;
+      if (modelFlag._tag === "Some") {
+        selectedModel = modelFlag.value;
+      } else {
+        const CUSTOM_SENTINEL = "__custom__";
+        let chosen: string;
+        if (selectedAgent.models && selectedAgent.models.length > 0) {
+          const selected = yield* Effect.promise(() =>
+            clack.select({
+              message: `Select a model for ${selectedAgent.label}:`,
+              initialValue: selectedAgent.defaultModel,
+              options: [
+                ...selectedAgent.models!.map((m) => ({
+                  value: m,
+                  label: m,
+                  ...(m === selectedAgent.defaultModel
+                    ? { hint: "default" }
+                    : {}),
+                })),
+                { value: CUSTOM_SENTINEL, label: "Custom…" },
+              ],
+            }),
+          );
+          if (clack.isCancel(selected)) {
+            yield* Effect.fail(
+              new InitError({ message: "Model selection cancelled." }),
+            );
+          }
+          chosen = selected as string;
+        } else {
+          chosen = CUSTOM_SENTINEL;
+        }
+
+        if (chosen === CUSTOM_SENTINEL) {
+          const typed = yield* Effect.promise(() =>
+            clack.text({
+              message: `Enter model ID for ${selectedAgent.label}:`,
+              initialValue: selectedAgent.defaultModel,
+              validate: (value) => {
+                if (!value || value.trim().length === 0) {
+                  return "Model ID cannot be empty";
+                }
+              },
+            }),
+          );
+          if (clack.isCancel(typed)) {
+            yield* Effect.fail(
+              new InitError({ message: "Model selection cancelled." }),
+            );
+          }
+          selectedModel = (typed as string).trim();
+        } else {
+          selectedModel = chosen;
+        }
+      }
 
       // Resolve sandbox provider: interactive select (no default — user must choose)
       const sandboxProviders = listSandboxProviders();
