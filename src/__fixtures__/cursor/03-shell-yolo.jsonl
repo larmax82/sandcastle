@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"chat_01HXY9Z0000000000000000003","model":"composer-2","cwd":"/home/agent"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll list the repo files."}]}}
+{"type":"tool_call","subtype":"started","tool_call":{"shellToolCall":{"command":"ls -la /home/agent"}}}
+{"type":"tool_call","subtype":"completed","tool_call":{"shellToolCall":{"command":"ls -la /home/agent","result":{"success":{"exitCode":0,"stdout":"total 0\n"}}}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Now reading the package."}]}}
+{"type":"tool_call","subtype":"started","tool_call":{"shellToolCall":{"command":"cat package.json"}}}
+{"type":"tool_call","subtype":"completed","tool_call":{"shellToolCall":{"command":"cat package.json","result":{"success":{"exitCode":0,"stdout":"{}\n"}}}}}
+{"type":"result","subtype":"success","result":"Done.","session_id":"chat_01HXY9Z0000000000000000003"}

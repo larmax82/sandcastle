@@ -1211,4 +1211,48 @@ describe("cursor factory", () => {
     expect(counts["result"]).toBe(1);
     expect(counts["tool_call"]).toBeUndefined();
   });
+
+  it("parses 03-shell-yolo.jsonl: one Bash tool_call per started shell event, no double-emit on completed", () => {
+    const provider = cursor("composer-2");
+    const lines = loadFixture("cursor/03-shell-yolo.jsonl")
+      .split("\n")
+      .filter((l) => l.length > 0);
+    const events = lines.flatMap((l) => provider.parseStreamLine(l));
+
+    const toolCalls = events.filter((e) => e.type === "tool_call");
+    expect(toolCalls).toEqual([
+      { type: "tool_call", name: "Bash", args: "ls -la /home/agent" },
+      { type: "tool_call", name: "Bash", args: "cat package.json" },
+    ]);
+    expect(events.filter((e) => e.type === "session_id")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "result")).toHaveLength(1);
+  });
+
+  it("parses 04-edit-tool.jsonl: zero tool_calls (unknown keys skipped), still emits init + text + result", () => {
+    const provider = cursor("composer-2");
+    const lines = loadFixture("cursor/04-edit-tool.jsonl")
+      .split("\n")
+      .filter((l) => l.length > 0);
+    const events = lines.flatMap((l) => provider.parseStreamLine(l));
+
+    expect(events.filter((e) => e.type === "tool_call")).toEqual([]);
+    expect(events.filter((e) => e.type === "session_id")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "text")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "result")).toHaveLength(1);
+  });
+
+  it("parseStreamLine ignores tool_call events with subtype 'completed' (no double-emit)", () => {
+    const provider = cursor("composer-2");
+    const line = JSON.stringify({
+      type: "tool_call",
+      subtype: "completed",
+      tool_call: {
+        shellToolCall: {
+          command: "echo hi",
+          result: { success: { exitCode: 0, stdout: "hi\n" } },
+        },
+      },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([]);
+  });
 });

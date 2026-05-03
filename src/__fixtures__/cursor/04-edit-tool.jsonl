@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","session_id":"chat_01HXY9Z0000000000000000004","model":"composer-2","cwd":"/home/agent"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll find and edit the README."}]}}
+{"type":"tool_call","subtype":"started","tool_call":{"globToolCall":{"pattern":"**/README.md"}}}
+{"type":"tool_call","subtype":"completed","tool_call":{"globToolCall":{"pattern":"**/README.md","result":{"success":{"matches":["README.md"]}}}}}
+{"type":"tool_call","subtype":"started","tool_call":{"editToolCall":{"path":"README.md","oldString":"foo","newString":"bar"}}}
+{"type":"tool_call","subtype":"completed","tool_call":{"editToolCall":{"path":"README.md","result":{"success":{"bytesWritten":3}}}}}
+{"type":"result","subtype":"success","result":"Edited README.","session_id":"chat_01HXY9Z0000000000000000004"}
