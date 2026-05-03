@@ -36,7 +36,7 @@ The package name stays `@ai-hero/sandcastle`, so all imports (`import { run, cur
 Use this when you want to _use_ the fork from a different repo. Pin to a tag, not a branch — branches move and force-pushes break lockfiles.
 
 ```bash
-npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.2"
+npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.3"
 ```
 
 Or, equivalently, in the consumer project's `package.json`:
@@ -44,7 +44,7 @@ Or, equivalently, in the consumer project's `package.json`:
 ```json
 {
   "devDependencies": {
-    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.2"
+    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.3"
   }
 }
 ```
@@ -52,7 +52,13 @@ Or, equivalently, in the consumer project's `package.json`:
 Then run `npm install`. npm clones the fork at the tag, runs `prepare` (which builds `dist/` via `tsgo`), and prunes devDependencies. After install you can use it normally:
 
 ```bash
-npx sandcastle init --agent cursor
+npx sandcastle init
+```
+
+`sandcastle init` prompts interactively for agent → model → sandbox provider → backlog manager → template. Pick **Cursor** at the agent step and you'll get a curated model list (Composer, Claude, GPT, Gemini, …) plus a "Custom…" entry for any model ID Cursor accepts. Or skip the prompts entirely:
+
+```bash
+npx sandcastle init --agent cursor --model composer-2
 ```
 
 ```typescript
@@ -69,7 +75,7 @@ await run({
 For private-fork access, swap the URL form to SSH so npm uses your local key:
 
 ```bash
-npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.2"
+npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.3"
 ```
 
 #### Updating to a new tag
