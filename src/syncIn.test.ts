@@ -10,6 +10,14 @@ import { syncIn } from "./syncIn.js";
 
 const execAsync = promisify(exec);
 
+// `cat` and `ls` don't exist in Windows cmd.exe, which the test sandbox uses
+// when no POSIX shell is available. `type` and `dir /B` are the cmd-side
+// equivalents and produce comparable output for our assertions.
+const isWin = process.platform === "win32";
+const catCmd = (file: string): string =>
+  isWin ? `type "${file}"` : `cat ${file}`;
+const lsCmd = isWin ? "dir /B" : "ls";
+
 const initRepo = async (dir: string) => {
   await execAsync("git init -b main", { cwd: dir });
   await execAsync('git config user.email "test@test.com"', { cwd: dir });
@@ -32,7 +40,10 @@ const getHead = async (dir: string) => {
   return stdout.trim();
 };
 
-describe("syncIn", () => {
+// Each case spawns many child processes (git operations + cat/ls). Windows
+// has noticeably higher per-spawn overhead, which can push tests with several
+// commits past vitest's 5s default. Allow more headroom across the suite.
+describe("syncIn", { timeout: 30_000 }, () => {
   it("bundles a repo and clones it into the sandbox — files present", async () => {
     const hostDir = await mkdtemp(join(tmpdir(), "host-"));
     await initRepo(hostDir);
@@ -43,7 +54,7 @@ describe("syncIn", () => {
     try {
       await Effect.runPromise(syncIn(hostDir, handle));
 
-      const result = await handle.exec("cat hello.txt");
+      const result = await handle.exec(catCmd("hello.txt"));
       expect(result.stdout.trim()).toBe("hello world");
     } finally {
       await handle.close();
@@ -73,9 +84,9 @@ describe("syncIn", () => {
       expect(log.split("\n")).toHaveLength(3);
 
       // Verify all files present
-      expect((await handle.exec("cat a.txt")).stdout.trim()).toBe("a");
-      expect((await handle.exec("cat b.txt")).stdout.trim()).toBe("b");
-      expect((await handle.exec("cat c.txt")).stdout.trim()).toBe("c");
+      expect((await handle.exec(catCmd("a.txt"))).stdout.trim()).toBe("a");
+      expect((await handle.exec(catCmd("b.txt"))).stdout.trim()).toBe("b");
+      expect((await handle.exec(catCmd("c.txt"))).stdout.trim()).toBe("c");
     } finally {
       await handle.close();
     }
@@ -96,7 +107,9 @@ describe("syncIn", () => {
       ).stdout.trim();
       expect(sandboxHead).toBe(await getHead(hostDir));
 
-      const content = (await handle.exec("cat local-only.txt")).stdout.trim();
+      const content = (
+        await handle.exec(catCmd("local-only.txt"))
+      ).stdout.trim();
       expect(content).toBe("no remote");
     } finally {
       await handle.close();
@@ -132,7 +145,7 @@ describe("syncIn", () => {
       expect(result.branch).toBe("feature-branch");
 
       // Feature file should exist
-      expect((await handle.exec("cat feature.txt")).stdout.trim()).toBe(
+      expect((await handle.exec(catCmd("feature.txt"))).stdout.trim()).toBe(
         "feature work",
       );
 
@@ -161,11 +174,13 @@ describe("syncIn", () => {
       await Effect.runPromise(syncIn(hostDir, handle));
 
       // Committed content should be the original
-      const content = (await handle.exec("cat committed.txt")).stdout.trim();
+      const content = (
+        await handle.exec(catCmd("committed.txt"))
+      ).stdout.trim();
       expect(content).toBe("committed");
 
       // Untracked file should not exist
-      const ls = (await handle.exec("ls")).stdout;
+      const ls = (await handle.exec(lsCmd)).stdout;
       expect(ls).not.toContain("untracked.txt");
     } finally {
       await handle.close();

@@ -32,8 +32,11 @@ export const makeLocalSandboxLayer = (
   return Layer.succeed(Sandbox, {
     exec: (command, options) => {
       return Effect.async<ExecResult, ExecError>((resume) => {
-        const proc = spawn("sh", ["-c", command], {
+        // Use the platform's default shell (sh on POSIX, cmd.exe on Windows).
+        // Tests that exercise this layer must use shell-agnostic commands.
+        const proc = spawn(command, {
           cwd: options?.cwd ?? sandboxDir,
+          shell: true,
           stdio: [
             options?.stdin !== undefined ? "pipe" : "ignore",
             "pipe",

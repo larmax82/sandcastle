@@ -6,7 +6,7 @@
  * requiring a real remote environment.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { copyFile, cp, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -47,8 +47,11 @@ export const testIsolated = (): IsolatedSandboxProvider =>
           if (options?.onLine) {
             const onLine = options.onLine;
             return new Promise((resolve, reject) => {
-              const proc = spawn("sh", ["-c", command], {
+              // Use the platform's default shell (sh on POSIX, cmd.exe on
+              // Windows). Tests must use shell-agnostic commands.
+              const proc = spawn(command, {
                 cwd: options?.cwd ?? worktreePath,
+                shell: true,
                 stdio: ["ignore", "pipe", "pipe"],
               });
 
@@ -80,15 +83,17 @@ export const testIsolated = (): IsolatedSandboxProvider =>
           }
 
           return new Promise((resolve, reject) => {
-            execFile(
-              "sh",
-              ["-c", command],
+            exec(
+              command,
               {
                 cwd: options?.cwd ?? worktreePath,
                 maxBuffer: 10 * 1024 * 1024,
               },
               (error, stdout, stderr) => {
-                if (error && error.code === undefined) {
+                // When the shell binary itself can't spawn, error.code is a
+                // string like "ENOENT" — that's a hard failure, not a
+                // successful exit. Only treat numeric error.code as exit code.
+                if (error && typeof error.code !== "number") {
                   reject(new Error(`exec failed: ${error.message}`));
                 } else {
                   resolve({

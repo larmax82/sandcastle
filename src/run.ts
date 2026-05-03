@@ -73,10 +73,13 @@ export const printFileDisplayStartup = (
   const label = styleText("bold", `[${name}]`);
   const branchPart = options.branch ? ` on branch ${options.branch}` : "";
   const hostRepoDir = options.hostRepoDir ?? process.cwd();
-  const displayLogPath =
+  const rawLogPath =
     hostRepoDir === process.cwd()
       ? path.relative(process.cwd(), options.logPath)
       : options.logPath;
+  // The hint is a `tail -f` invocation, so emit POSIX-style separators even on
+  // Windows — both Git Bash and most users' tail copies expect forward slashes.
+  const displayLogPath = rawLogPath.replace(/\\/g, "/");
   console.log(`${label} Started${branchPart}`);
   console.log(styleText("dim", `  tail -f ${displayLogPath}`));
 };

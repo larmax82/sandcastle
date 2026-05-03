@@ -80,7 +80,11 @@ describe("PromptPreprocessor", () => {
 
   it("runs commands with the provided cwd", async () => {
     const { sandboxDir, layer } = await setup();
-    const prompt = "Dir: !`pwd`";
+    // `pwd` doesn't exist in cmd.exe; `cd` with no args prints the cwd in both
+    // cmd.exe and POSIX shells (in POSIX, `cd` alone moves to $HOME, but the
+    // builtin `pwd` is the equivalent). Use platform-specific commands.
+    const cwdCmd = process.platform === "win32" ? "cd" : "pwd";
+    const prompt = `Dir: !\`${cwdCmd}\``;
     const result = await run(prompt, layer, sandboxDir);
     expect(result).toBe(`Dir: ${sandboxDir}`);
   });
