@@ -341,12 +341,24 @@ export const opencode = (
 // Cursor agent provider
 // ---------------------------------------------------------------------------
 
+/**
+ * Maps Cursor tool_call keys to Sandcastle's normalized tool surface.
+ * Observed-but-skipped: editToolCall, globToolCall (intentionally not surfaced;
+ * extend by capturing a fixture and adding the entry).
+ */
+const CURSOR_TOOL_KEY_TO_SANDCASTLE: Record<
+  string,
+  { name: string; argField: string }
+> = {
+  shellToolCall: { name: "Bash", argField: "command" },
+};
+
 const parseCursorStreamLine = (line: string): ParsedStreamEvent[] => {
   if (!line.startsWith("{")) return [];
   try {
     const obj = JSON.parse(line);
 
-    // assistant message → text only (tool_call branch deferred to follow-up slice)
+    // assistant message → text only (tool calls arrive as separate tool_call events)
     if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
       const texts: string[] = [];
       for (const block of obj.message.content as {
@@ -359,6 +371,23 @@ const parseCursorStreamLine = (line: string): ParsedStreamEvent[] => {
       }
       if (texts.length > 0) {
         return [{ type: "text", text: texts.join("") }];
+      }
+      return [];
+    }
+
+    // tool_call event — only the "started" subtype is surfaced; "completed"
+    // would double-emit. Unknown tool keys are skipped silently.
+    if (obj.type === "tool_call" && obj.subtype === "started") {
+      const toolCall = obj.tool_call;
+      if (typeof toolCall !== "object" || toolCall === null) return [];
+      for (const [key, mapping] of Object.entries(
+        CURSOR_TOOL_KEY_TO_SANDCASTLE,
+      )) {
+        const payload = (toolCall as Record<string, unknown>)[key];
+        if (typeof payload !== "object" || payload === null) continue;
+        const argValue = (payload as Record<string, unknown>)[mapping.argField];
+        if (typeof argValue !== "string") return [];
+        return [{ type: "tool_call", name: mapping.name, args: argValue }];
       }
       return [];
     }
