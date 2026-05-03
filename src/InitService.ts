@@ -1,5 +1,6 @@
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
+import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SANDBOX_REPO_DIR } from "./SandboxFactory.js";
@@ -60,7 +61,55 @@ export interface AgentEntry {
    * Must include `defaultModel` if set.
    */
   readonly models?: readonly string[];
+  /**
+   * Optional live probe that returns the agent CLI's current model catalog.
+   * The picker prefers this over the static `models` list when available;
+   * the static list serves as a fallback when the binary is missing or the
+   * probe fails. Must resolve to `null` (not throw) on any failure.
+   */
+  readonly fetchModels?: () => Promise<readonly string[] | null>;
 }
+
+const ANSI_ESCAPE_REGEX = /\x1b\[[0-9;]*[A-Za-z]/g;
+const CURSOR_MODEL_LINE_REGEX = /^([a-zA-Z0-9._-]+)\s+-\s+.+$/;
+
+/**
+ * Parses the stdout of `cursor-agent --list-models` into model IDs.
+ *
+ * The CLI emits ANSI-decorated `<id> - <human label>` lines (with possible
+ * `(default)` / `(current)` annotations). Strips ANSI escapes and ignores
+ * lines that don't match the `<id> - <label>` shape (e.g. headers like
+ * "Available models", blank lines, the "Loading models…" status line).
+ */
+export const parseCursorModelsList = (raw: string): string[] => {
+  const stripped = raw.replace(ANSI_ESCAPE_REGEX, "");
+  const ids: string[] = [];
+  for (const line of stripped.split("\n")) {
+    const match = line.trim().match(CURSOR_MODEL_LINE_REGEX);
+    if (match) ids.push(match[1]!);
+  }
+  return ids;
+};
+
+/**
+ * Probes the local `cursor-agent` CLI for its current model catalog.
+ *
+ * The CLI exits **255 even on success** (Cursor quirk), so this resolves
+ * based on parseable stdout regardless of exit code, and returns `null`
+ * only when the binary is missing or no IDs were produced.
+ */
+const fetchCursorModels = (): Promise<readonly string[] | null> =>
+  new Promise((resolve) => {
+    execFile(
+      "cursor-agent",
+      ["--list-models"],
+      { timeout: 5_000, encoding: "utf8" },
+      (_err, stdout) => {
+        const ids = parseCursorModelsList(stdout || "");
+        resolve(ids.length > 0 ? ids : null);
+      },
+    );
+  });
 
 const CLAUDE_CODE_DOCKERFILE = `FROM node:22-bookworm
 
@@ -258,37 +307,27 @@ OPENCODE_API_KEY=`,
     envExample: `# Cursor API key
 # Get one from https://cursor.com/dashboard/integrations
 CURSOR_API_KEY=`,
-    // From forkDocu/adding-cursor-agent.md §2.3. Catalog drifts — keep the
-    // free-text "Custom…" escape hatch in the init picker so users can type
-    // any model Cursor accepts even if it's not listed here.
+    // The init picker prefers `fetchModels` (live probe of `cursor-agent
+    // --list-models`); this static list is the fallback when the CLI is
+    // missing or the probe fails. Keep it small and only include IDs Cursor
+    // is known to accept verbatim — bare family names like "claude-4.6-opus"
+    // get rejected at runtime; suffixed IDs are required.
     models: [
       "composer-2",
-      "composer-1.5",
-      "composer-1",
-      "claude-4.7-opus",
-      "claude-4.6-opus",
-      "claude-4.5-opus",
+      "composer-2-fast",
+      "claude-opus-4-7-high",
+      "claude-opus-4-7-thinking-high",
+      "claude-4.6-opus-high",
+      "claude-4.6-opus-max",
+      "claude-4.6-sonnet-medium",
       "claude-4.5-sonnet",
-      "claude-4.5-haiku",
-      "claude-4-sonnet-1m",
-      "claude-4-sonnet",
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.3",
-      "gpt-5.2",
-      "gpt-5.1",
-      "gpt-5",
-      "gpt-5.3-codex",
-      "gpt-5.2-codex",
-      "gpt-5.1-codex",
-      "gpt-5-codex",
+      "gpt-5.5-medium",
+      "gpt-5.4-medium",
       "gemini-3.1-pro",
-      "gemini-3-pro",
       "gemini-3-flash",
-      "gemini-2.5-flash",
-      "grok-4.20",
-      "kimi-k2.5",
+      "grok-4-20",
     ],
+    fetchModels: fetchCursorModels,
   },
 ];
 

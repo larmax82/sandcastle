@@ -14,6 +14,7 @@ import {
   getBacklogManager,
   listSandboxProviders,
   getSandboxProvider,
+  parseCursorModelsList,
 } from "./InitService.js";
 import type { AgentEntry, ScaffoldOptions } from "./InitService.js";
 import { SANDBOX_REPO_DIR } from "./SandboxFactory.js";
@@ -131,6 +132,12 @@ describe("Agent registry", () => {
     expect(agent.models).toContain(agent.defaultModel);
   });
 
+  it("cursor exposes fetchModels for live catalog probing", () => {
+    const agent = getAgent("cursor")!;
+    expect(agent.fetchModels).toBeDefined();
+    expect(typeof agent.fetchModels).toBe("function");
+  });
+
   it.each(["claude-code", "pi", "codex", "opencode"] as const)(
     "agent %s leaves models undefined (free-text picker fallback)",
     (name) => {
@@ -138,6 +145,53 @@ describe("Agent registry", () => {
       expect(agent.models).toBeUndefined();
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// Cursor model list parser
+// ---------------------------------------------------------------------------
+
+describe("parseCursorModelsList", () => {
+  it("extracts IDs from `<id> - <label>` lines", () => {
+    const raw =
+      "auto - Auto\n" +
+      "composer-2 - Composer 2\n" +
+      "claude-4.6-opus-high - Opus 4.6 1M High\n";
+    expect(parseCursorModelsList(raw)).toEqual([
+      "auto",
+      "composer-2",
+      "claude-4.6-opus-high",
+    ]);
+  });
+
+  it("strips ANSI escape sequences and `(default)` / `(current)` annotations", () => {
+    // Real fragment captured from `cursor-agent --list-models` stdout
+    const raw =
+      "\x1b[2K\x1b[GLoading models…\n" +
+      "\x1b[2K\x1b[1A\x1b[2K\x1b[GAvailable models\n" +
+      "\n" +
+      "composer-2-fast - Composer 2 Fast  (default)\n" +
+      "composer-2 - Composer 2  (current)\n" +
+      "gpt-5.4-medium - GPT-5.4 Medium\n";
+    expect(parseCursorModelsList(raw)).toEqual([
+      "composer-2-fast",
+      "composer-2",
+      "gpt-5.4-medium",
+    ]);
+  });
+
+  it("returns empty array on empty input", () => {
+    expect(parseCursorModelsList("")).toEqual([]);
+  });
+
+  it("ignores lines without the `<id> - <label>` shape", () => {
+    const raw =
+      "Available models\n" +
+      "\n" +
+      "Some unrelated text without a dash separator\n" +
+      "valid-id - Valid Label\n";
+    expect(parseCursorModelsList(raw)).toEqual(["valid-id"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
