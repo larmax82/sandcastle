@@ -36,7 +36,7 @@ The package name stays `@ai-hero/sandcastle`, so all imports (`import { run, cur
 Use this when you want to _use_ the fork from a different repo. Pin to a tag, not a branch — branches move and force-pushes break lockfiles.
 
 ```bash
-npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.6"
+npm install --save-dev "github:larmax82/sandcastle#v0.5.7-cursor.8"
 ```
 
 Or, equivalently, in the consumer project's `package.json`:
@@ -44,7 +44,7 @@ Or, equivalently, in the consumer project's `package.json`:
 ```json
 {
   "devDependencies": {
-    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.6"
+    "@ai-hero/sandcastle": "github:larmax82/sandcastle#v0.5.7-cursor.8"
   }
 }
 ```
@@ -75,7 +75,7 @@ await run({
 For private-fork access, swap the URL form to SSH so npm uses your local key:
 
 ```bash
-npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.6"
+npm install --save-dev "git+ssh://git@github.com:larmax82/sandcastle.git#v0.5.7-cursor.8"
 ```
 
 #### Updating to a new tag
@@ -90,15 +90,17 @@ The lockfile rewrites the entry to the resolved git commit SHA, so reinstalls st
 
 `v<upstream-version>-cursor.<n>`. Currently published:
 
-| Tag               | Contents                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------- |
-| `v0.5.7-cursor.0` | Fork distribution mechanism (build `dist/` on git-source install)                                       |
-| `v0.5.7-cursor.1` | Cursor agent provider — text + result + session_id                                                      |
-| `v0.5.7-cursor.2` | Cursor agent provider — surfaces shell tool calls (`Bash`)                                              |
-| `v0.5.7-cursor.3` | `sandcastle init` interactive model picker (curated for Cursor)                                         |
-| `v0.5.7-cursor.4` | Cross-platform `prepare`/`postbuild` — fixes empty install on Windows (#13)                             |
-| `v0.5.7-cursor.5` | `sandcastle init` honors the selected sandbox provider — fixes Podman scaffold calling `docker()` (#16) |
-| `v0.5.7-cursor.6` | Cross-platform `copyToWorktree` — fixes `spawn cp ENOENT` on Windows worktree creation (#19)            |
+| Tag               | Contents                                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `v0.5.7-cursor.0` | Fork distribution mechanism (build `dist/` on git-source install)                                           |
+| `v0.5.7-cursor.1` | Cursor agent provider — text + result + session_id                                                          |
+| `v0.5.7-cursor.2` | Cursor agent provider — surfaces shell tool calls (`Bash`)                                                  |
+| `v0.5.7-cursor.3` | `sandcastle init` interactive model picker (curated for Cursor)                                             |
+| `v0.5.7-cursor.4` | Cross-platform `prepare`/`postbuild` — fixes empty install on Windows (#13)                                 |
+| `v0.5.7-cursor.5` | `sandcastle init` honors the selected sandbox provider — fixes Podman scaffold calling `docker()` (#16)     |
+| `v0.5.7-cursor.6` | Cross-platform `copyToWorktree` — fixes `spawn cp ENOENT` on Windows worktree creation (#19)                |
+| `v0.5.7-cursor.7` | Cross-platform test sandbox shell-outs — fixes `spawn sh ENOENT` and POSIX-only `mktemp` on Windows (#18)   |
+| `v0.5.7-cursor.8` | Bind-mount providers use `--mount` syntax — fixes podman drive-letter colon parser failure on Windows (#21) |
 
 Pick the highest tag unless you have a specific reason not to.
 
