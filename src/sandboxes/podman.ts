@@ -112,9 +112,12 @@ export const podman = (options?: PodmanOptions): SandboxProvider => {
           (m) => m.hostPath === createOptions.worktreePath,
         )?.sandboxPath ?? "/home/agent/workspace";
 
-      // Build volume mount strings with optional SELinux label (internal + user mounts)
+      // Build --mount specs (internal + user mounts). The long-form
+      // `--mount type=bind,source=...,destination=...` syntax avoids the
+      // colon-on-Windows ambiguity of `-v host:container[:options]`, where
+      // drive-letter paths break podman's volume parser.
       const allMounts = [...createOptions.mounts, ...userMounts];
-      const volumeMounts = allMounts.map((m) =>
+      const mountSpecs = allMounts.map((m) =>
         formatVolumeMount(m, selinuxLabel),
       );
 
@@ -135,7 +138,7 @@ export const podman = (options?: PodmanOptions): SandboxProvider => {
         "-e",
         `${key}=${value}`,
       ]);
-      const volumeArgs = volumeMounts.flatMap((v) => ["-v", v]);
+      const mountArgs = mountSpecs.flatMap((v) => ["--mount", v]);
       const usernsArgs = userns
         ? [`--userns=keep-id:uid=${containerUid},gid=${containerGid}`]
         : [];
@@ -162,7 +165,7 @@ export const podman = (options?: PodmanOptions): SandboxProvider => {
             "-w",
             worktreePath,
             ...envArgs,
-            ...volumeArgs,
+            ...mountArgs,
             "--entrypoint",
             "sleep",
             imageName,
@@ -399,10 +402,13 @@ const formatVolumeMount = (
   mount: { hostPath: string; sandboxPath: string; readonly?: boolean },
   selinuxLabel: PodmanOptions["selinuxLabel"],
 ): string => {
-  const base = `${mount.hostPath}:${mount.sandboxPath}`;
-  const options = [mount.readonly ? "ro" : undefined, selinuxLabel || undefined]
-    .filter((option): option is string => option !== undefined)
-    .join(",");
-
-  return options ? `${base}:${options}` : base;
+  const parts = [
+    "type=bind",
+    `source=${mount.hostPath}`,
+    `destination=${mount.sandboxPath}`,
+  ];
+  if (mount.readonly) parts.push("readonly");
+  if (selinuxLabel === "z") parts.push("relabel=shared");
+  else if (selinuxLabel === "Z") parts.push("relabel=private");
+  return parts.join(",");
 };

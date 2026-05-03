@@ -141,7 +141,7 @@ describe("podman()", () => {
     expect(provider.env).toEqual({});
   });
 
-  it("formats readonly SELinux mounts as :ro,z", async () => {
+  it("formats readonly SELinux mounts with readonly,relabel=shared", async () => {
     mockExecFile.mockImplementation((_command, _args, ...rest: any[]) => {
       const callback = rest[rest.length - 1];
       callback(null, "", "");
@@ -166,12 +166,14 @@ describe("podman()", () => {
       ([, args]) => Array.isArray(args) && args[0] === "run",
     )?.[1];
 
-    expect(runArgs).toContain(`${homedir()}:/mnt/home:ro,z`);
+    expect(runArgs).toContain(
+      `type=bind,source=${homedir()},destination=/mnt/home,readonly,relabel=shared`,
+    );
 
     await handle.close();
   });
 
-  it("formats writable SELinux mounts as :z", async () => {
+  it("formats writable SELinux mounts with relabel=shared", async () => {
     mockExecFile.mockImplementation((_command, _args, ...rest: any[]) => {
       const callback = rest[rest.length - 1];
       callback(null, "", "");
@@ -196,12 +198,14 @@ describe("podman()", () => {
       ([, args]) => Array.isArray(args) && args[0] === "run",
     )?.[1];
 
-    expect(runArgs).toContain(`${homedir()}:/mnt/home:z`);
+    expect(runArgs).toContain(
+      `type=bind,source=${homedir()},destination=/mnt/home,relabel=shared`,
+    );
 
     await handle.close();
   });
 
-  it("formats readonly mounts without SELinux as :ro", async () => {
+  it("formats readonly mounts without SELinux as readonly", async () => {
     mockExecFile.mockImplementation((_command, _args, ...rest: any[]) => {
       const callback = rest[rest.length - 1];
       callback(null, "", "");
@@ -226,7 +230,9 @@ describe("podman()", () => {
       ([, args]) => Array.isArray(args) && args[0] === "run",
     )?.[1];
 
-    expect(runArgs).toContain(`${homedir()}:/mnt/home:ro`);
+    expect(runArgs).toContain(
+      `type=bind,source=${homedir()},destination=/mnt/home,readonly`,
+    );
 
     await handle.close();
   });
@@ -256,9 +262,59 @@ describe("podman()", () => {
       ([, args]) => Array.isArray(args) && args[0] === "run",
     )?.[1];
 
-    expect(runArgs).toContain(`${homedir()}:/mnt/home`);
+    expect(runArgs).toContain(
+      `type=bind,source=${homedir()},destination=/mnt/home`,
+    );
     // Should NOT have any trailing options
-    expect(runArgs).not.toContain(`${homedir()}:/mnt/home:`);
+    expect(runArgs).not.toContain(
+      `type=bind,source=${homedir()},destination=/mnt/home,`,
+    );
+
+    await handle.close();
+  });
+
+  it("emits Windows drive-letter host paths through --mount without colon ambiguity (issue #21)", async () => {
+    mockExecFile.mockImplementation((_command, _args, ...rest: any[]) => {
+      const callback = rest[rest.length - 1];
+      callback(null, "", "");
+      return undefined as any;
+    });
+
+    const provider = podman({ selinuxLabel: "z" });
+
+    const handle = await provider.create({
+      worktreePath: "E:/Tandem_dev/.sandcastle/worktrees/sandcastle-impl-1",
+      hostRepoPath: "E:/Tandem_dev",
+      mounts: [
+        {
+          hostPath: "E:/Tandem_dev/.sandcastle/worktrees/sandcastle-impl-1",
+          sandboxPath: "/home/agent/workspace",
+        },
+        // The shape that broke podman before #21: host path with a
+        // drive-letter colon. Podman parsing `-v` would see five tokens.
+        {
+          hostPath: "E:/Tandem_dev/.git",
+          sandboxPath: "/.sandcastle-parent-git",
+        },
+      ],
+      env: {},
+    });
+
+    const runArgs = mockExecFile.mock.calls.find(
+      ([, args]) => Array.isArray(args) && args[0] === "run",
+    )?.[1] as string[];
+
+    // We pass the mount via --mount, never -v.
+    expect(runArgs).not.toContain("-v");
+    expect(runArgs).toContain("--mount");
+    expect(runArgs).toContain(
+      "type=bind,source=E:/Tandem_dev/.git,destination=/.sandcastle-parent-git,relabel=shared",
+    );
+    // And nothing in the args looks like the legacy `host:container[:opt]`
+    // form for this mount, which is what podman's parser used to reject.
+    expect(runArgs).not.toContain(
+      "E:/Tandem_dev/.git:/.sandcastle-parent-git:z",
+    );
 
     await handle.close();
   });
@@ -509,9 +565,7 @@ describe("podman()", () => {
     // Verify no chown exec call was made
     const chownCall = mockExecFile.mock.calls.find(
       ([cmd, args]) =>
-        cmd === "podman" &&
-        Array.isArray(args) &&
-        args.includes("chown"),
+        cmd === "podman" && Array.isArray(args) && args.includes("chown"),
     );
     expect(chownCall).toBeUndefined();
 

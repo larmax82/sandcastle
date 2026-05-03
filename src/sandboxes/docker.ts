@@ -77,11 +77,19 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
           (m) => m.hostPath === createOptions.worktreePath,
         )?.sandboxPath ?? "/home/agent/workspace";
 
-      // Build volume mount strings (internal mounts + user-provided mounts)
+      // Build --mount specs (internal + user-provided mounts). The
+      // `--mount type=bind,source=...,destination=...` syntax avoids the
+      // colon-on-Windows ambiguity of `-v host:container[:options]`, where
+      // drive-letter paths break the volume parser.
       const allMounts = [...createOptions.mounts, ...userMounts];
       const volumeMounts = allMounts.map((m) => {
-        const base = `${m.hostPath}:${m.sandboxPath}`;
-        return m.readonly ? `${base}:ro` : base;
+        const parts = [
+          "type=bind",
+          `source=${m.hostPath}`,
+          `destination=${m.sandboxPath}`,
+        ];
+        if (m.readonly) parts.push("readonly");
+        return parts.join(",");
       });
 
       // Resolve image name
