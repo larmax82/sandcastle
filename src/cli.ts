@@ -163,13 +163,34 @@ const initCommand = Command.make(
       } else {
         const CUSTOM_SENTINEL = "__custom__";
         let chosen: string;
-        if (selectedAgent.models && selectedAgent.models.length > 0) {
+
+        // Prefer the agent CLI's live catalog over the static fallback so the
+        // picker can't drift out of sync with what the API actually accepts.
+        let liveModels: readonly string[] | null = null;
+        if (selectedAgent.fetchModels) {
+          const spinner = clack.spinner();
+          spinner.start(`Fetching ${selectedAgent.label} model catalog…`);
+          liveModels = yield* Effect.promise(selectedAgent.fetchModels);
+          spinner.stop(
+            liveModels
+              ? `Loaded ${liveModels.length} models from ${selectedAgent.label}`
+              : `${selectedAgent.label} CLI unavailable — using cached list`,
+          );
+        }
+        const candidateModels =
+          liveModels && liveModels.length > 0
+            ? liveModels
+            : selectedAgent.models;
+
+        if (candidateModels && candidateModels.length > 0) {
           const selected = yield* Effect.promise(() =>
             clack.select({
               message: `Select a model for ${selectedAgent.label}:`,
-              initialValue: selectedAgent.defaultModel,
+              initialValue: candidateModels.includes(selectedAgent.defaultModel)
+                ? selectedAgent.defaultModel
+                : candidateModels[0],
               options: [
-                ...selectedAgent.models!.map((m) => ({
+                ...candidateModels.map((m) => ({
                   value: m,
                   label: m,
                   ...(m === selectedAgent.defaultModel
